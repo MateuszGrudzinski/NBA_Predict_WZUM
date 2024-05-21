@@ -35,18 +35,30 @@ def Load_data_form_CSV(names,dir_path):
             data.append(df)
     return data
 
-def Combine_Data_and_target(Data,Target,season):
+def Combine_Data_and_target(Data,Target,season,rookies_only = False):
     result = Data.copy()
     result["Target"] = 0
     target_class = 1
-    for i in range (25):
-        result.loc[result["PLAYER"] == Target[season].iloc[i],'Target'] = target_class
+    if rookies_only:
+        n = 10
+        target_class = 4
+    else:
+        n = 15
+    for i in range (n):
+        if rookies_only:
+            result.loc[result["PLAYER"] == Target[season].iloc[15 + i],'Target'] = target_class
+        else:
+            result.loc[result["PLAYER"] == Target[season].iloc[i], 'Target'] = target_class
         if i % 5 == 4:
             target_class += 1
     return result
 
+def drop_low_playtime(df,playtime_th):
+    result = df[~(df['MIN'] <= playtime_th)]
+    return result
+
 if __name__ == "__main__":
-    Data, Names = Get_n_Year_data(30,"Regular Season",'RS')
+    Data, Names = Get_n_Year_data(30,"Regular Season",'Rookies','_Rookies')
     Save_Data_to_Pickle(Data,Names,"./Data/")
     #Data, Names = Get_n_Year_data(30,"Regular Season",'Rookies','_Rookies')
     #Save_Data_to_Pickle(Data,Names,"./Data/")
