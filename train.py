@@ -16,8 +16,13 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.metrics import recall_score
 from sklearn.metrics import f1_score
+from sklearn.feature_selection import SelectKBest
+from sklearn.feature_selection import f_classif
+from sklearn.model_selection import GridSearchCV
+from joblib import dump, load
 recall_partial = functools.partial(recall_score, average = 'weighted')
 f1_partial = functools.partial(recall_score, average = 'weighted')
+
 def parse_results(array_proba,rookies,verbose = False):
     y_pred = np.zeros((array_proba.shape[0], 1))
     if not rookies:
@@ -67,14 +72,13 @@ def custom_scorrer(y_true,y_pred):
             score += bonus_pts[x]
         return score
 
-
 if __name__ == "__main__":
 
     seasons = []
     rookie_data_names = []
     data_names = []
-    for i in range (25):
-        seasons.append(str(2022 - i) + '-' + str(((23 - i) % 100)).zfill(2))
+    for i in range (30):
+        seasons.append(str(2023 - i) + '-' + str(((24 - i) % 100)).zfill(2))
         data_names.append(seasons[i] + "_" + "Regular Season")
         rookie_data_names.append(seasons[i] + "_" + "Regular Season" + "_Rookies")
 
@@ -88,32 +92,54 @@ if __name__ == "__main__":
         Season_data_annotated.append(Get_data.Combine_Data_and_target(Data,target[0],season,rookies_only=False))
         Season_data_rookies_annotated.append(Get_data.Combine_Data_and_target(Data_Rookies, target[0], season, rookies_only=True))
 
-    playtime_th = -400
+    playtime_th = 1200
+    playtime_th_rookies = 200
 
-    X_train = Get_data.drop_low_playtime(pd.concat(Season_data_annotated[3:29],ignore_index=True),playtime_th)
+    X_train = Get_data.drop_low_playtime(pd.concat(Season_data_annotated[1:8],ignore_index=True),playtime_th)
     X_test = Get_data.drop_low_playtime(Season_data_annotated[0],playtime_th)
-    X_rookies_train = Get_data.drop_low_playtime(pd.concat(Season_data_rookies_annotated[3:29],ignore_index=True),playtime_th)
-    X_rookies_test = Get_data.drop_low_playtime(Season_data_rookies_annotated[0],playtime_th)
-
+    X_rookies_train = Get_data.drop_low_playtime(pd.concat(Season_data_rookies_annotated[1:8],ignore_index=True),playtime_th_rookies)
+    X_rookies_test = Get_data.drop_low_playtime(Season_data_rookies_annotated[0],playtime_th_rookies)
     y_train = X_train['Target']
     y_test = X_test['Target']
     y_rookies_train = X_rookies_train['Target']
     y_rookies_test = X_rookies_test['Target']
 
+    param_grid = {'randomforestclassifier__n_estimators': [50,100,500,2000],
+                  'randomforestclassifier__max_depth':[2,5,10,15],
+                  'randomforestclassifier__max_features':[2,5,10,20,'sqrt','log2'],
+                  'randomforestclassifier__ccp_alpha':[0.0,0.005],
+                  'randomforestclassifier__criterion':['gini', 'entropy', 'log_loss'],
+                  'randomforestclassifier__class_weight':[None,'balanced']}
     gnb = make_pipeline(StandardScaler(),KNeighborsClassifier(n_neighbors=20,weights='uniform',algorithm='brute'))
     gnb_rookies = make_pipeline(StandardScaler(),KNeighborsClassifier(n_neighbors=20,weights='uniform',algorithm='brute'))
     clf_SVC = make_pipeline(StandardScaler(), SVC(gamma='auto',probability=True,kernel='rbf',class_weight='balanced'))
     clf_SVC_Rookies = make_pipeline(StandardScaler(), SVC(gamma='scale',probability=True,kernel='rbf'))
-    rf = make_pipeline(StandardScaler(),RandomForestClassifier(random_state=42,n_estimators=5000,max_depth=5,max_features=10,criterion='entropy',oob_score = f1_partial))
-    rf_rookies = make_pipeline(StandardScaler(),RandomForestClassifier(random_state=42, n_estimators=5000, max_depth=5,max_features=10,criterion='entropy',oob_score = f1_partial))
-    rf.fit(X_train.loc[:,~X_train.columns.isin(['PLAYER','TEAM','Target'])], y_train)
-    rf_rookies.fit(X_rookies_train.loc[:, ~X_rookies_train.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_rookies_train)
-    gnb.fit(X_train.loc[:, ~X_train.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_train)
+    rf = make_pipeline(StandardScaler(),RandomForestClassifier(n_estimators=50,max_depth=15,max_features=20,criterion='log_loss',class_weight='balanced',random_state=42))
+    rf_rookies = make_pipeline(StandardScaler(),RandomForestClassifier(n_estimators=50,max_depth=15,max_features=20,criterion='log_loss',class_weight='balanced',random_state=42))
+    #50 15 20 log_loss balanced
+    scorr = make_scorer(f1_score, response_method='predict', average='micro')
+
+    #search = GridSearchCV(rf,param_grid,n_jobs=-1,verbose=5,refit=True,scoring=scorr)
+    #search_rookies = GridSearchCV(rf_rookies, param_grid, n_jobs=2,verbose=3,refit=True,scoring=scorr)
+    #search.fit(X_train.loc[:,~X_train.columns.isin(['PLAYER','TEAM','Target'])], y_train)
+    #search_rookies.fit(X_rookies_train.loc[:, ~X_rookies_train.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_rookies_train)
+    #print(search.best_params_)
+    #print(search_rookies.best_params_)
+    #estimator = search.best_estimator_
+    #dump(estimator, "Best_S.joblib")
+    #Z powodu czasu obliczeń, parametry dobrane dla 1 modelu wykorzystane zostaną dla obydwóch modelów
+    #estimator_R = search.best_estimator_
+    #dump(estimator_R, "Best_R.joblib")
+
+    gnb.fit(X_train.loc[:, ~X_train.columns.isin(['PLAYER', 'TEAM','Target'])], y_train)
     gnb_rookies.fit(
         X_rookies_train.loc[:, ~X_rookies_train.columns.isin(['PLAYER', 'TEAM', 'Target'])],
         y_rookies_train)
     clf_SVC.fit(X_train.loc[:, ~X_train.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_train)
     clf_SVC_Rookies.fit(X_rookies_train.loc[:, ~X_rookies_train.columns.isin(['PLAYER', 'TEAM', 'Target'])],y_rookies_train)
+    rf.fit(X_train.loc[:, ~X_train.columns.isin(['PLAYER', 'TEAM',  'Target'])], y_train)
+    rf_rookies.fit(X_rookies_train.loc[:, ~X_rookies_train.columns.isin(['PLAYER', 'TEAM',  'Target'])],
+                        y_rookies_train)
 
     result = rf.predict_proba(X_test.loc[:, ~X_test.columns.isin(['PLAYER', 'TEAM', 'Target'])])
     result_rookies = rf_rookies.predict_proba(X_rookies_test.loc[:, ~X_rookies_test.columns.isin(['PLAYER', 'TEAM', 'Target'])])
@@ -127,22 +153,23 @@ if __name__ == "__main__":
 
     y_pred = parse_results(result,False,True)
     y_pred_rookies = parse_results(result_rookies, True,True)
-    a = scorer(rf,X_test.loc[:, ~X_test.columns.isin(['PLAYER', 'TEAM', 'Target'])],y_test)
-    b = scorer(rf_rookies, X_rookies_test.loc[:, ~X_rookies_test.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_rookies_test)
+    a = scorer(rf, X_test.loc[:, ~X_test.columns.isin(['PLAYER', 'TEAM', 'Target', 'Target_1'])], y_test)
+    b = scorer(rf_rookies,
+               X_rookies_test.loc[:, ~X_rookies_test.columns.isin(['PLAYER', 'TEAM', 'Target', 'Target_1'])],
+               y_rookies_test)
     print("Wynik: ", a + b, "/450")
     print("################################WIELKIE SVC##########################################")
     y_pred = parse_results(result_SVC, False,True)
     y_pred_rookies = parse_results(result_rookies_SVC, True,True)
-    a = scorer(clf_SVC, X_test.loc[:, ~X_test.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_test)
-    b = scorer(clf_SVC_Rookies,X_rookies_test.loc[:, ~X_rookies_test.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_rookies_test)
+    a = scorer(clf_SVC, X_test.loc[:, ~X_test.columns.isin(['PLAYER', 'TEAM', 'Target','Target_1'])], y_test)
+    b = scorer(clf_SVC_Rookies,X_rookies_test.loc[:, ~X_rookies_test.columns.isin(['PLAYER', 'TEAM', 'Target','Target_1'])], y_rookies_test)
     print("Wynik: ",a+b,"/450")
     print("################################NAIVE BAYES##########################################")
     y_pred = parse_results(result_gnb, False, True)
     y_pred_rookies = parse_results(result_rookies_gnb, True, True)
-    a = scorer(gnb, X_test.loc[:, ~X_test.columns.isin(['PLAYER', 'TEAM', 'Target'])], y_test)
+    a = scorer(gnb, X_test.loc[:, ~X_test.columns.isin(['PLAYER', 'TEAM', 'Target','Target_1'])], y_test)
     b = scorer(gnb_rookies,
-               X_rookies_test.loc[:, ~X_rookies_test.columns.isin(['PLAYER', 'TEAM', 'Target'])],
+               X_rookies_test.loc[:, ~X_rookies_test.columns.isin(['PLAYER', 'TEAM', 'Target','Target_1'])],
                y_rookies_test)
     print("Wynik: ", a + b, "/450")
     #print(X_train.head(40))
-
