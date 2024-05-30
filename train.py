@@ -9,12 +9,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
 from sklearn.metrics import make_scorer
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import recall_score
 from sklearn.metrics import f1_score
-
-"""Przygotowanie częciowe funkcji wykorzystanych w trakcie oceniania modeli"""
-recall_partial = functools.partial(recall_score, average = 'weighted')
-f1_partial = functools.partial(recall_score, average = 'weighted')
 
 """Funkcja przetwarzająca wynik w postaci prawdopodobieństwa na klasy <- wybór 5 o najwyższym prawdopodobieństwie dla danej"
  "klasy"""
